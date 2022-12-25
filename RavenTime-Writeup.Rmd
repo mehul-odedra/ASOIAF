@@ -1,0 +1,109 @@
+---
+title: "How accurate are the journey times in A Song of Ice and Fire by George R.R. Martin?"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+```{r include=FALSE}
+library(Hmisc)
+library(rgdal)
+library(tmap)
+library(RColorBrewer)
+
+locations <- readOGR(".", "locations")
+
+Interested <- c("King's Landing", "Winterfell",
+                 "Riverrun", "The Crag",  "Dragonstone", "Storm's End")
+holds <- locations[locations@data$name %in% Interested, ]
+```
+
+```{r include=FALSE}
+RT=read.csv("~/RavenTime4.csv",header=TRUE, row.names=1)
+dist<-as.dist(RT)
+dist
+```
+
+```{r include=FALSE}
+SL=read.csv("~/RavenDistance.csv",header=TRUE, row.names=1)
+dist1<-as.dist(SL)
+RD=read.csv("~/RoadDistancesASOIAF.csv",header=TRUE, row.names=1)
+dist2<-as.dist(RD)
+```
+
+# Introduction
+
+I've always been curious about how much thought George RR Martin has put into the world of A Song of Ice and Fire. Within the second book he released a map of Westeros, the continent where the majority of the book takes place. My question is, did he use this map when planning journeys by ravens carrying messages across Westeros?
+
+To answer my question, I collected data of the number of days taken by ravens to go from one city to the next in Westeros, plotted a map using distance based methods and showed that this aligns surprisingly well with the actual map of Westeros.Therefore answering the question of how much thought George RR Martin put into the journey times within the series; a lot!
+
+```{r warning=FALSE, include=FALSE}
+library(MASS)
+
+# Establish basic parameters
+nrnc <- nrow(RT)
+nvals <- nrnc^2
+# Generate initial config and oMDS soln using Raven Time with missing data
+set.seed(100)
+init.config <- matrix(runif(nrnc*2), nrow=nrnc, ncol=2)
+soln2 <-  isoMDS(dist, y=init.config);
+```
+
+### Figure 1: Plot of recovered location from Raven data superimpsoed onto the actual location
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+#Form co-ords matrix from shapefile of Westeros
+X <- cbind(holds@coords[,1], holds@coords[,2])
+rownames(X) <- holds@data[["name"]]
+
+Y <- cbind(soln2$points[,2], -soln2$points[,1])
+X <- X[order(rownames(X)),]
+Y <- Y[order(rownames(Y)),]
+
+library("smacof")
+#Do procrustes
+procr <- Procrustes(X=X, Y=Y)
+
+#plot procrustes
+plot(X[,1], X[,2], type="n",xlim=c(4,27))
+text(X[,1], X[,2], lab=dimnames(X)[[1]], cex=0.7)
+text(procr$Yhat[,1], procr$Yhat[,2], lab=dimnames(Y)[[1]], cex=0.7, col=2)
+legend(x="topright", col=c(1,2), pch=1, legend=c("Actual Location", "Recovered"))
+```
+
+# Collecting the data
+
+## Raven Time
+I found some very helpful resources to answer this question; the fanbase of the series is very big and some of them decided to create a timeline of every event in the series so far [1]. I used this timeline to note every time a raven carried a message within the first three books as this is all I have read so far. In total I noted 58 journeys between 11 cities, mostly to or from either Winterfell or King's Landing (the two 'main' locations for the first three books). This meant only 6 of these cities had strong connections with each other; if I used more than 6 cities over 10% of the journey times would be missing and ordinal scaling cannot handle this well. Therefore I settled on analysing just 6 cities. I then calculated the average time between these places (as there were some repeat journeys with different number of days taken).The data for the 6 cities is summarised in Figure 2 as a distance table. We are still missing a datapoint between Storm's End and Winterfell but we will be able to overcome this using ordinal scaling as this is only 5% of our data.
+
+### Figure 2: Distance Matrix of Raven journey times
+```{r echo=FALSE, fig.cap="Raven Jounrey Time"}
+RT=read.csv("~/RavenTime4.csv",header=TRUE, row.names=1)
+dist<-as.dist(RT)
+dist
+```
+
+## Straight-line distances
+Next I needed the real coordinates of these cities. Again I was lucky to find someone has created a shapefile for Westeros with these co-ordinates.[Reference 1] I imported the locations I was interested in and noted the co-ords. I'll plot these later along with the co-ords I get from my distance matrix. I have assumed raven journey times are symmetrical.
+
+# Why Distance-Based methods?
+
+We could potentially use the original map and a piece of sting to measure the distance between the cities, scale this to match the 'raven time data' and compare the values but we would not be able to intuitively see how accurate the times are. Using distance based methods to recreate the map and superimpose the original on top is the most intuitive way to summarize the data, and the fastest way for us to digest the data as most people can process visual information more easily.
+
+
+# Raven Time analysis.
+
+I used isoMDS from the package "MASS" with a randomly generated initial configuration to find the co-ords of the 6 cities in my dataset. This is because ordinal scaling can cope with missing distances. I then used Procrustes from the package "smacof". To translate, rotate and scale by co-ords to minimise $\sum_{k=1}^{6}\sum_{i=1}^{6}(X_{i,k}-Y_{i,k})$ between the co-ords of the original location ($X$) and the generted location ($Y$).
+
+The generated map is surprisingly accurate (figure 1 above), clearly George RR Martin has put thought into how long raven journeys take as the map aligns almost perfectly. Taking into account that ravens in the real world don't fly at the same speed, this map is even more impressive as the small discrepancies can be explained by the noise added from the varying speeds of ravens. 
+
+Clearly ravens took too long to fly to Riverrun. This is something I also noticed in the book; Catelyn (the charcter in Riverrun) is always the last to find out about events.
+
+# Conclusion
+
+It looks like George RR Martin has thought about the journey times in ASOIAF as the raven time accurately recreates a map of Westeros. However, we will need better data to judge this for the characters as the Road Maps data shows the cities are closer than their striaghtline distances, which is not possible as they were supposedly measured from the same map.
+ 
+# Refrences
+
+[1]:
+
+Reddit, 2013, "Most Precise ASOIAF Timeline in Existence", Available From https://www.reddit.com/r/asoiaf/comments/1c07jw/spoilers_all_most_precise_asoiaf_timeline_in/ , DOA: 25/02/2021
